@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Classifier</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            text-align: center;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            margin: auto;
+        }
+        button {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            padding: 10px; /* Adjusted padding for icons */
+            margin: 5px; /* Added spacing between buttons */
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            display: inline-flex; /* For aligning icon and text */
+            align-items: center; /* For vertical alignment */
+            justify-content: center; /* For horizontal alignment */
+            width: 40px; /* Fixed width for consistent size */
+            height: 40px; /* Fixed height for consistent size */
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        input {
+            margin-top: 10px;
+        }
+        #preview-box {
+            display: none;
+            width: 224px;
+            height: 224px;
+            border: 2px solid #007BFF;
+            border-radius: 10px;
+            margin: 10px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        #preview {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        #webcam {
+            display: none;
+            width: 224px;
+            height: 224px;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+        #label-container {
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .progress {
+            width: 100%;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            margin-bottom: 5px;
+            overflow: hidden;
+            padding: 4px;
+            height: 30px; /* Set a fixed height for the progress bar */
+        }
+
+        .progress-bar {
+            height: 100%; /* Make the inner bar fill the progress container */
+            background-color: #4CAF50;
+            width: 0%;
+            border-radius: 5px;
+            transition: width 0.5s ease-in-out;
+            text-align: center;
+            color: white;
+            display: flex; /* Use flexbox for vertical centering */
+            align-items: center;
+            justify-content: center;
+        }
+
+        .progress-bar span { /* Span for the percentage text */
+            font-size: 14px; /* Adjust font size as needed */
+        }
+
+        .upload-icon {
+        background-color: #007BFF;
+        color: white;
+        border: none;
+        padding: 10px;
+        margin: 5px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        margin-bottom: 10px; /* Add some space below the icon */
+      }
+
+      .upload-icon:hover {
+        background-color: #0056b3;
+      }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Image Classifier</h2>
+        <p style="font-size: 14px; color: #555;">Powered by <strong>Crop Guardian</strong> 🌿🔬</p>
+        <p style="font-size: 16px; font-style: italic; color: #4CAF50;">
+        "Harnessing the power of AI to protect crops, one leaf at a time."  
+        </p>
+
+        <label for="upload" class="upload-icon">  <i class="fas fa-upload"></i>
+        </label>
+        <input type="file" accept="image/*" id="upload" onchange="loadImage(event)" style="display: none;">
+        <button onclick="startCamera()"><i class="fas fa-camera"></i></button>
+        <button onclick="captureImage()"><i class="fas fa-image"></i></button>
+
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="canvas" width="224" height="224" style="display: none;"></canvas>
+
+        <div id="preview-box">
+            <img id="preview" />
+        </div>
+
+        <button onclick="predict()"><i class="fas fa-chart-line"></i></button>
+        <div id="label-container"></div>
+    </div>
+
+    <script>
+
+const diseaseData = {
+    "Healthy": {
+        "recommendation": "Your crop appears to be healthy. Keep monitoring for any changes.",
+        "fertilizer": "No additional fertilizer needed. Maintain proper nutrient balance.",
+        "medical": "No medical treatment needed."
+    },
+    "Swollen Shoot": {
+        "recommendation": "Immediately remove and destroy infected plants to prevent spread. Control mealybugs, as they spread the virus.",
+        "fertilizer": "Apply phosphorus-rich and potassium-based fertilizers to strengthen plant resistance.",
+        "medical": "Use **insecticidal soap or neem oil** to control mealybugs. No chemical cure exists for the virus."
+    },
+    "Rust": {
+        "recommendation": "Use resistant crop varieties, remove infected leaves, and apply sulfur-based fungicides.",
+        "fertilizer": "Apply potassium-based fertilizers to improve disease resistance.",
+        "medical": "Use **copper-based fungicides** or **sulfur sprays** to control rust."
+    }
+};
+
+
+        // ... (rest of your JavaScript code)
+
+        async function predictView(predictions) {
+            predictions = await model.classify(canvas);
+
+            const labelContainer = document.getElementById('label-container');
+            labelContainer.innerHTML = ''; // Clear previous results
+
+            predictions.forEach(prediction => {
+                const label = prediction.className;
+                const probability = prediction.probability; // No need to fix decimal places here
+
+                const predictionDiv = document.createElement('div'); // Container for label and progress bar
+
+                const labelSpan = document.createElement('span'); // Span for the label
+                labelSpan.textContent = `${label}: `;
+                predictionDiv.appendChild(labelSpan);
+
+                const progressBar = document.createElement('div');
+                progressBar.className = 'progress';
+
+                const progressBarInner = document.createElement('div');
+                progressBarInner.className = 'progress-bar';
+                progressBarInner.style.width = `${probability * 100}%`; // Use probability directly
+                progressBarInner.setAttribute("aria-valuenow", probability * 100);
+                progressBarInner.setAttribute("aria-valuemin", 0);
+                progressBarInner.setAttribute("aria-valuemax", 100);
+                progressBarInner.textContent = `${(probability * 100).toFixed(0)}%`; // Percentage inside bar
+                progressBar.appendChild(progressBarInner);
+                predictionDiv.appendChild(progressBar);
+
+                labelContainer.appendChild(predictionDiv);
+            });
+
+        }
+    
+        const MODEL_URL = "https://teachablemachine.withgoogle.com/models/06I6A1mkw/";
+        let model, uploadedImage, webcamStream;
+
+        async function loadModel() {
+            const modelURL = MODEL_URL + "model.json";
+            const metadataURL = MODEL_URL + "metadata.json";
+            model = await tmImage.load(modelURL, metadataURL);
+        }
+
+        function loadImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            let img = document.getElementById("preview");
+            img.src = window.URL.createObjectURL(file);
+            uploadedImage = img;
+            document.getElementById("preview-box").style.display = "block";
+            document.getElementById("label-container").innerHTML = ""; 
+        }
+
+        function startCamera() {
+            let webcam = document.getElementById("webcam");
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    webcamStream = stream;
+                    webcam.srcObject = stream;
+                    webcam.style.display = "block";
+                })
+                .catch(error => console.error("Webcam error:", error));
+        }
+
+        function captureImage() {
+            let canvas = document.getElementById("canvas");
+            let context = canvas.getContext("2d");
+            let webcam = document.getElementById("webcam");
+
+            if (!webcam.srcObject) {
+                alert("Please start the camera first.");
+                return;
+            }
+
+            context.drawImage(webcam, 0, 0, 224, 224);
+            let img = document.getElementById("preview");
+            img.src = canvas.toDataURL("image/png");
+            uploadedImage = img;
+            document.getElementById("preview-box").style.display = "block";
+
+            // Stop the webcam stream
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => track.stop());
+                webcam.style.display = "none";
+            }
+        }
+
+        async function predict() {
+            if (!model) await loadModel();
+            if (!uploadedImage || !uploadedImage.src) {
+                alert("Please upload or capture an image first.");
+                return;
+            }
+
+            const imgElement = new Image();
+            imgElement.src = uploadedImage.src;
+            imgElement.width = 224;
+            imgElement.height = 224;
+            await imgElement.decode();
+
+            const predictions = await model.predict(imgElement);
+            displayPredictions(predictions);
+        }
+
+        function displayPredictions(predictions) {
+    const labelContainer = document.getElementById("label-container");
+    labelContainer.innerHTML = ""; // Clear previous predictions
+
+    let highestPrediction = predictions.reduce((prev, current) => 
+        prev.probability > current.probability ? prev : current
+    );
+
+    const threshold = 0.5; // Set confidence threshold (adjust as needed)
+
+    if (highestPrediction.probability < threshold) {
+        labelContainer.innerHTML = "<div style='color: red; font-weight: bold;'>Invalid Image</div>";
+        return;
+    }
+
+    predictions.forEach(pred => {
+        const predictionDiv = document.createElement('div'); // Container for label and progress bar
+
+        const labelSpan = document.createElement('span'); // Span for the label
+        labelSpan.textContent = `${pred.className}: `;
+        predictionDiv.appendChild(labelSpan);
+
+        const progressBar = document.createElement('div');
+        progressBar.className = 'progress';
+
+        const progressBarInner = document.createElement('div');
+        progressBarInner.className = 'progress-bar';
+        progressBarInner.style.width = `${pred.probability * 100}%`;
+        progressBarInner.setAttribute("aria-valuenow", pred.probability * 100);
+        progressBarInner.setAttribute("aria-valuemin", 0);
+        progressBarInner.setAttribute("aria-valuemax", 100);
+        progressBarInner.textContent = `${(pred.probability * 100).toFixed(0)}%`; // Percentage inside bar
+        progressBar.appendChild(progressBarInner);
+        predictionDiv.appendChild(progressBar);
+
+        labelContainer.appendChild(predictionDiv);
+    });
+
+    const diseaseInfo = diseaseData[highestPrediction.className];
+
+    if (diseaseInfo) {
+        const detailsDiv = document.createElement("div");
+        detailsDiv.className = "prediction-details";
+        detailsDiv.innerHTML = `
+            <h3 style="font-family: 'Orbitron', sans-serif; color: #007BFF;">${highestPrediction.className}</h3>
+            <p style="font-family: 'Arial', sans-serif; font-size: 14px;"><strong>Recommendation:</strong> ${diseaseInfo.recommendation}</p>
+            <p style="font-family: 'Courier New', monospace; font-size: 14px; color: #4CAF50;"><strong>Fertilizer:</strong> ${diseaseInfo.fertilizer}</p>
+            <p style="font-family: 'Georgia', serif; font-size: 14px; color: #FF5733;"><strong>Medical:</strong> ${diseaseInfo.medical}</p>
+        `;
+        labelContainer.appendChild(detailsDiv);
+    }
+}
+
+
+
+    </script>
+</body>
+</html>

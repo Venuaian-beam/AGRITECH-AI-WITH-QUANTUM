@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum-Powered Image Classifier</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <style>
+        body { font-family: 'Orbitron', sans-serif; text-align: center; background-color: #f4f4f4; padding: 20px; }
+        .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); max-width: 400px; margin: auto; }
+        button { background-color: #007BFF; color: white; border: none; padding: 10px; margin: 5px; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #preview-box { display: none; width: 224px; height: 224px; border: 2px solid #007BFF; border-radius: 10px; margin: 10px auto; }
+        #label-container { margin-top: 10px; font-size: 18px; font-weight: bold; }
+        #preview-box {
+            display: none;
+            width: 224px;
+            height: 224px;
+            border: 2px solid #007BFF;
+            border-radius: 10px;
+            margin: 10px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        #preview {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Quantum-Powered Image Classifier</h2>
+        <p><strong>Powered by Crop Guardian 🌿🔬</strong></p>
+        <p>"Harnessing Quantum Computing & AI to Protect Crops!"</p>
+
+        <input type="file" accept="image/*" id="upload" onchange="loadImage(event)">
+        <button onclick="startCamera()">Start Camera</button>
+        <button onclick="captureImage()">Capture</button>
+        <button onclick="predict()">Predict</button>
+
+        <div id="preview-box">
+            <img id="preview" />
+        </div>
+        <div id="label-container"></div>
+    </div>
+
+    <script>
+        const MODEL_URL = "https://teachablemachine.withgoogle.com/models/06I6A1mkw/";
+        let model, uploadedImage;
+
+        async function loadModel() {
+            const modelURL = MODEL_URL + "model.json";
+            const metadataURL = MODEL_URL + "metadata.json";
+            model = await tmImage.load(modelURL, metadataURL);
+        }
+
+        async function preprocessWithQiskit(imageData) {
+  try {
+    // Convert image to numerical features first
+    const imageFeatures = convertImageToFeatures(imageData); // Implement this
+    const response = await fetch('http://localhost:5001/qiskit-process', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ features: imageFeatures })
+    });
+
+    const data = await response.json();
+    
+    if (data.error) throw new Error(data.error);
+    if (!data.quantum_features) throw new Error('No features returned');
+    
+    return data.quantum_features;
+  } catch (error) {
+    console.error('Qiskit processing failed:', error);
+    throw error; // Rethrow for outer catch
+  }
+}
+
+
+
+
+
+
+async function predict() {
+    if (!model) await loadModel();
+    if (!uploadedImage || !uploadedImage.src) {
+        alert("Please upload or capture an image first.");
+        return;
+    }
+
+    const imgElement = new Image();
+    imgElement.src = uploadedImage.src;
+    imgElement.width = 224;
+    imgElement.height = 224;
+
+    imgElement.onload = async () => {
+        try {
+            console.log("Image loaded:", imgElement.src);
+
+            const imgTensor = tf.browser.fromPixels(imgElement).mean(2).toFloat();
+            const imgArray = Array.from(imgTensor.dataSync()).slice(0, 2);
+
+            console.log("Sending features to backend:", imgArray);
+            const response = await preprocessWithQiskit(imgArray);
+            
+            if (!response || !response.quantum_features) {
+                throw new Error("Invalid quantum features");
+            }
+
+            console.log("Quantum Features:", response.quantum_features);
+            const predictions = await model.predict(tf.tensor(response.quantum_features, [1, response.quantum_features.length]));
+            displayPredictions(predictions);
+        } catch (error) {
+            console.error("Error during prediction:", error);
+        }
+    };
+
+    imgElement.onerror = () => console.error("Failed to load image");
+}
+
+
+
+        function displayPredictions(predictions) {
+            const labelContainer = document.getElementById("label-container");
+            labelContainer.innerHTML = "";
+            let highestPrediction = predictions.reduce((prev, current) => prev.probability > current.probability ? prev : current);
+            if (highestPrediction.probability < 0.5) {
+                labelContainer.innerHTML = "<div style='color: red; font-weight: bold;'>Invalid Image</div>";
+                return;
+            }
+            predictions.forEach(pred => {
+                labelContainer.innerHTML += `<div>${pred.className}: ${(pred.probability * 100).toFixed(0)}%</div>`;
+            });
+        }
+
+        function loadImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            let img = document.getElementById("preview");
+            img.src = URL.createObjectURL(file);
+            uploadedImage = img;
+            document.getElementById("preview-box").style.display = "block";
+        }
+    </script>
+</body>
+</html>
+🌿 
+🧪 
+💊 
